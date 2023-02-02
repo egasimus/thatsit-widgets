@@ -2,23 +2,20 @@ use crate::{*, crossterm::{cursor::*,style::*}};
 
 /// A border around another widget
 #[derive(Copy, Clone, Default)]
-pub struct Border<T: BorderStyle, W: Widget>(pub T, pub W);
+pub struct Border<T: BorderStyle, U: BorderTheme, W: Widget>(pub T, pub U, pub W);
 
-impl<T: BorderStyle, W: Widget> Widget for Border<T, W> {
+impl<T: BorderStyle, U: BorderTheme, W: Widget> Widget for Border<T, U, W> {
     impl_render!(self, out, area => {
         let Area(x, y, w, h) = area;
         if w == 0 || h == 0 { return Ok((0, 0)) }
 
-        fn set_colors (out: &mut dyn Write, inverse: bool) -> Result<()> {
-            let bg = Color::AnsiValue(235);
-            if inverse {
-                out
-                    .queue(SetBackgroundColor(Color::AnsiValue(16)))?
-                    .queue(SetForegroundColor(bg))?;
-            } else {
-                out
-                    .queue(SetBackgroundColor(bg))?
-                    .queue(SetForegroundColor(Color::AnsiValue(240)))?;
+        fn set_colors (out: &mut dyn Write, fg: &Option<Color>, bg: &Option<Color>) -> Result<()> {
+            out.queue(ResetColor)?;
+            if let Some(fg) = fg {
+                out.queue(SetForegroundColor(*fg))?;
+            }
+            if let Some(bg) = bg {
+                out.queue(SetBackgroundColor(*bg))?;
             }
             Ok(())
         }
@@ -26,103 +23,170 @@ impl<T: BorderStyle, W: Widget> Widget for Border<T, W> {
         //Filled(bg).layout(max)?.render(term, Area(Point(x, y), Size(w, h)))?;
         
         // draw top
-        let (top_left, inverse) = T::top_left();
-        set_colors(out, inverse)?;
+        let (top_left, fg, bg) = T::top_left(&self.1);
+        set_colors(out, &fg, &bg)?;
         out.queue(MoveTo(x, y))?.queue(Print(&top_left))?;
 
-        let (top, inverse) = T::top();
-        set_colors(out, inverse)?;
+        let (top, fg, bg) = T::top(&self.1);
+        set_colors(out, &fg, &bg)?;
         out.queue(MoveTo(x+1, y))?.queue(Print(&String::from(top).repeat((w-2) as usize)))?;
 
-        let (top_right, inverse) = T::top_right();
-        set_colors(out, inverse)?;
+        let (top_right, fg, bg) = T::top_right(&self.1);
+        set_colors(out, &fg, &bg)?;
         out.queue(MoveTo(x+w-1, y))?.queue(Print(&top_right))?;
 
         // draw sides and background
-        let (left, inverse) = T::left();
-        set_colors(out, inverse)?;
+        let (left, fg, bg) = T::left(&self.1);
+        set_colors(out, &fg, &bg)?;
         for y in y+1..y+h-1 {
             out.queue(MoveTo(x, y))?.queue(Print(&left))?;
         }
 
-        out
-            .queue(SetBackgroundColor(Color::AnsiValue(235)))?
-            .queue(SetForegroundColor(Color::AnsiValue(240)))?;
+        set_colors(out, &self.1.hi(), &self.1.bg())?;
         for y in y+1..y+h-1 {
             out.queue(MoveTo(x+1, y))?.queue(Print(&" ".repeat((w-2) as usize)))?;
         }
 
-        let (right, inverse) = T::right();
-        set_colors(out, inverse)?;
+        let (right, fg, bg) = T::right(&self.1);
+        set_colors(out, &fg, &bg)?;
         for y in y+1..y+h-1 {
             out.queue(MoveTo(x+w-1, y))?.queue(Print(&right))?;
         }
 
         // draw bottom
-        let (bottom_left, inverse) = T::bottom_left();
-        set_colors(out, inverse)?;
+        let (bottom_left, fg, bg) = T::bottom_left(&self.1);
+        set_colors(out, &fg, &bg)?;
         out.queue(MoveTo(x, y+h-1))?.queue(Print(&bottom_left))?;
 
-        let (bottom, inverse) = T::bottom();
-        set_colors(out, inverse)?;
+        let (bottom, fg, bg) = T::bottom(&self.1);
+        set_colors(out, &fg, &bg)?;
         out.queue(MoveTo(x+1, y+h-1))?.queue(Print(&String::from(bottom).repeat((w-2) as usize)))?;
 
-        let (bottom_right, inverse) = T::bottom_right();
-        set_colors(out, inverse)?;
+        let (bottom_right, fg, bg) = T::bottom_right(&self.1);
+        set_colors(out, &fg, &bg)?;
         out.queue(MoveTo(x+w-1, y+h-1))?.queue(Print(&bottom_right))?;
         
         // Draw contained element
-        self.1.render(out, Area(x+1, y+1, w-2, h-2))
+        set_colors(out, &None, &self.1.bg())?;
+        self.2.render(out, Area(x+1, y+1, w-2, h-2))
     });
 }
 
-/// A border character, and whether it should be rendered inverse.
-pub type BorderChar = (char, bool);
+/// A set of colors to use for rendering a border.
+pub trait BorderTheme {
+    /// The color outside the box
+    fn out (&self) -> Option<Color> { None }
+    /// The background of the box
+    fn bg  (&self) -> Option<Color> { None }
+    /// One border color.
+    fn hi  (&self) -> Option<Color>;
+    /// The other border color.
+    fn lo  (&self) -> Option<Color>;
+}
 
-/// A set of border characters.
+/// Colors for an inset grey border.
+pub struct Inset;
+
+impl BorderTheme for Inset {
+    fn bg (&self) -> Option<Color> {
+        Some(Color::AnsiValue(235))
+    }
+    fn hi (&self) -> Option<Color> {
+        Some(Color::AnsiValue(240))
+    }
+    fn lo (&self) -> Option<Color> {
+        Some(Color::AnsiValue(16))
+    }
+}
+
+/// Colors for an outset grey border.
+pub struct Outset;
+
+impl BorderTheme for Outset {
+    fn bg (&self) -> Option<Color> {
+        Some(Color::AnsiValue(235))
+    }
+    fn hi (&self) -> Option<Color> {
+        Some(Color::AnsiValue(16))
+    }
+    fn lo (&self) -> Option<Color> {
+        Some(Color::AnsiValue(240))
+    }
+}
+
+/// A border character, and its foreground and background colors.
+pub type BorderChar = (char, Option<Color>, Option<Color>);
+
+/// A set of characters to use for rendering a border.
 pub trait BorderStyle {
-    fn top       () -> BorderChar;
-    fn top_left  () -> BorderChar;
-    fn top_right () -> BorderChar;
-
-    fn left  () -> BorderChar;
-    fn right () -> BorderChar;
-
-    fn bottom       () -> BorderChar;
-    fn bottom_left  () -> BorderChar;
-    fn bottom_right () -> BorderChar;
+    fn top (theme: &impl BorderTheme) -> BorderChar;
+    fn top_left (theme: &impl BorderTheme) -> BorderChar;
+    fn top_right (theme: &impl BorderTheme) -> BorderChar;
+    fn left (theme: &impl BorderTheme) -> BorderChar;
+    fn right (theme: &impl BorderTheme) -> BorderChar;
+    fn bottom (theme: &impl BorderTheme) -> BorderChar;
+    fn bottom_left (theme: &impl BorderTheme) -> BorderChar;
+    fn bottom_right (theme: &impl BorderTheme) -> BorderChar;
 }
 
-/// An inset border with more vertical space.
-pub struct InsetTall;
+/// A border with more vertical space.
+pub struct Tall;
 
-impl BorderStyle for InsetTall {
-    fn top       () -> BorderChar { ('▇', true)  }
-    fn top_left  () -> BorderChar { ('▊', true)  }
-    fn top_right () -> BorderChar { ('▎', false) }
-
-    fn left  () -> BorderChar { ('▊', true)  }
-    fn right () -> BorderChar { ('▎', false) }
-
-    fn bottom       () -> BorderChar { ('▁', false) }
-    fn bottom_left  () -> BorderChar { ('▊', true)  }
-    fn bottom_right () -> BorderChar { ('▎', false) }
+impl BorderStyle for Tall {
+    fn top (theme: &impl BorderTheme) -> BorderChar {
+        ('▇', theme.bg(), theme.lo())
+    }
+    fn top_left (theme: &impl BorderTheme) -> BorderChar {
+        ('▊', theme.bg(), theme.lo())
+    }
+    fn top_right (theme: &impl BorderTheme) -> BorderChar {
+        ('▎', theme.hi(), theme.bg())
+    }
+    fn left (theme: &impl BorderTheme) -> BorderChar {
+        ('▊', theme.bg(), theme.lo())
+    }
+    fn right (theme: &impl BorderTheme) -> BorderChar {
+        ('▎', theme.hi(), theme.bg())
+    }
+    fn bottom (theme: &impl BorderTheme) -> BorderChar {
+        ('▁', theme.hi(), theme.bg())
+    }
+    fn bottom_left (theme: &impl BorderTheme) -> BorderChar {
+        ('▊', theme.bg(), theme.lo())
+    }
+    fn bottom_right (theme: &impl BorderTheme) -> BorderChar {
+        ('▎', theme.hi(), theme.bg())
+    }
 }
 
-/// An inset border with more horizontal space.
-pub struct InsetWide;
+/// A border with more horizontal space.
+pub struct Wide;
 
-impl BorderStyle for InsetWide {
-    fn top       () -> BorderChar { ('▁', false) }
-    fn top_left  () -> BorderChar { ('▁', false) }
-    fn top_right () -> BorderChar { ('▁', false) }
-
-    fn left  () -> BorderChar { ('▎', false) }
-    fn right () -> BorderChar { ('▊', true)  }
-
-    fn bottom       () -> BorderChar { ('▇', true)  }
-    fn bottom_left  () -> BorderChar { ('▇', true)  }
-    fn bottom_right () -> BorderChar { ('▇', true) }
+impl BorderStyle for Wide {
+    fn top (theme: &impl BorderTheme) -> BorderChar {
+        ('▁', theme.lo(), theme.bg())
+    }
+    fn top_left (theme: &impl BorderTheme) -> BorderChar {
+        ('▁', theme.lo(), theme.bg())
+    }
+    fn top_right (theme: &impl BorderTheme) -> BorderChar {
+        ('▁', theme.lo(), theme.bg())
+    }
+    fn left (theme: &impl BorderTheme) -> BorderChar {
+        ('▎', theme.lo(), theme.bg())
+    }
+    fn right (theme: &impl BorderTheme) -> BorderChar {
+        ('▊', theme.bg(), theme.hi())
+    }
+    fn bottom (theme: &impl BorderTheme) -> BorderChar {
+        ('▇', theme.bg(), theme.hi())
+    }
+    fn bottom_left (theme: &impl BorderTheme) -> BorderChar {
+        ('▇', theme.bg(), theme.hi())
+    }
+    fn bottom_right (theme: &impl BorderTheme) -> BorderChar { 
+        ('▇', theme.bg(), theme.hi())
+    }
 }
 
 #[cfg(test)]
