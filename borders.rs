@@ -9,19 +9,6 @@ impl<T: BorderStyle, U: BorderTheme, W: Widget> Widget for Border<T, U, W> {
         let Area(x, y, w, h) = area;
         if w == 0 || h == 0 { return Ok((0, 0)) }
 
-        fn set_colors (out: &mut dyn Write, fg: &Option<Color>, bg: &Option<Color>) -> Result<()> {
-            out.queue(ResetColor)?;
-            if let Some(fg) = fg {
-                out.queue(SetForegroundColor(*fg))?;
-            }
-            if let Some(bg) = bg {
-                out.queue(SetBackgroundColor(*bg))?;
-            }
-            Ok(())
-        }
-
-        //Filled(bg).layout(max)?.render(term, Area(Point(x, y), Size(w, h)))?;
-        
         // draw top
         let (top_left, fg, bg) = T::top_left(&self.1);
         set_colors(out, &fg, &bg)?;
@@ -65,11 +52,22 @@ impl<T: BorderStyle, U: BorderTheme, W: Widget> Widget for Border<T, U, W> {
         let (bottom_right, fg, bg) = T::bottom_right(&self.1);
         set_colors(out, &fg, &bg)?;
         out.queue(MoveTo(x+w-1, y+h-1))?.queue(Print(&bottom_right))?;
-        
+
         // Draw contained element
         set_colors(out, &None, &self.1.bg())?;
         self.2.render(out, Area(x+1, y+1, w-2, h-2))
     });
+}
+
+fn set_colors (out: &mut dyn Write, fg: &Option<Color>, bg: &Option<Color>) -> Result<()> {
+    out.queue(ResetColor)?;
+    if let Some(fg) = fg {
+        out.queue(SetForegroundColor(*fg))?;
+    }
+    if let Some(bg) = bg {
+        out.queue(SetBackgroundColor(*bg))?;
+    }
+    Ok(())
 }
 
 /// A set of colors to use for rendering a border.
@@ -184,8 +182,38 @@ impl BorderStyle for Wide {
     fn bottom_left (theme: &impl BorderTheme) -> BorderChar {
         ('▇', theme.bg(), theme.hi())
     }
-    fn bottom_right (theme: &impl BorderTheme) -> BorderChar { 
+    fn bottom_right (theme: &impl BorderTheme) -> BorderChar {
         ('▇', theme.bg(), theme.hi())
+    }
+}
+
+/// A border with the default border characters.
+pub struct Flat;
+
+impl BorderStyle for Flat {
+    fn top (theme: &impl BorderTheme) -> BorderChar {
+        ('─', theme.hi(), theme.bg())
+    }
+    fn top_left (theme: &impl BorderTheme) -> BorderChar {
+        ('┌', theme.hi(), theme.bg())
+    }
+    fn top_right (theme: &impl BorderTheme) -> BorderChar {
+        ('┐', theme.hi(), theme.bg())
+    }
+    fn left (theme: &impl BorderTheme) -> BorderChar {
+        ('│', theme.hi(), theme.bg())
+    }
+    fn right (theme: &impl BorderTheme) -> BorderChar {
+        ('│', theme.hi(), theme.bg())
+    }
+    fn bottom (theme: &impl BorderTheme) -> BorderChar {
+        ('─', theme.hi(), theme.bg())
+    }
+    fn bottom_left (theme: &impl BorderTheme) -> BorderChar {
+        ('└', theme.hi(), theme.bg())
+    }
+    fn bottom_right (theme: &impl BorderTheme) -> BorderChar {
+        ('┘', theme.hi(), theme.bg())
     }
 }
 
