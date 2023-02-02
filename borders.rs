@@ -64,3 +64,17 @@ impl BorderStyle for InsetTall {
     fn l  () -> BorderChar { ('▊', true)  }
     fn tl () -> BorderChar { ('▊', true)  }
 }
+
+/// An inset border with more horizontal space.
+pub struct InsetWide;
+
+impl BorderStyle for InsetWide {
+    fn t  () -> BorderChar { ('▁', false) }
+    fn tr () -> BorderChar { ('▎', false) }
+    fn r  () -> BorderChar { ('▎', false) }
+    fn br () -> BorderChar { ('▎', false) }
+    fn b  () -> BorderChar { ('▇', true)  }
+    fn bl () -> BorderChar { ('▊', true)  }
+    fn l  () -> BorderChar { ('▊', true)  }
+    fn tl () -> BorderChar { ('▊', true)  }
+}
